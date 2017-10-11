@@ -211,11 +211,17 @@
   cursor: pointer;
 }
 
+.graphiql-container .doc-explorer-schema {
+  color: #3B5998;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
 .graphiql-container .search-box {
   border-bottom: 1px solid #d3d6db;
   display: block;
   font-size: 14px;
-  margin: -15px -15px 12px 0;
+  margin-bottom: 12px;
   position: relative;
 }
 

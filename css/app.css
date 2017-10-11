@@ -60,6 +60,7 @@
   height: 34px;
   padding: 7px 14px 6px;
   user-select: none;
+  width: 100%;
 }
 
 .graphiql-container .toolbar {
@@ -422,6 +423,10 @@
 
 .graphiql-container .CodeMirror-lines {
   padding: 20px 0;
+}
+
+.network-viz {
+  height: 100%;
 }
 
 .CodeMirror-hint-information .content {

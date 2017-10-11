@@ -55,12 +55,12 @@ app.use('/graphiql.js', (req, res) => {
 });
 
 app.use('/css', express.static(path.join(__dirname, '../css')));
+app.use(express.static(path.join(__dirname, '../')));
 app.use(express.static(__dirname));
 
 console.log('Initial build...');
 makeBundle(() => {
-  app.listen(0, function() {
-    const port = this.address().port;
-    console.log(`Started on http://localhost:${port}/`);
+  app.listen(5050, function() {
+    console.log(`Started on http://localhost:${5050}/`);
   });
 });
