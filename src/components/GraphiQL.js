@@ -543,7 +543,9 @@ export class GraphiQL extends React.Component {
         }
 
         if (result && result.data) {
+          console.log('result.data', result.data);
           const schema = buildClientSchema(result.data);
+          console.log('schema', schema);
           const queryFacts = getQueryFacts(schema, this.state.query);
           this.setState({ schema, ...queryFacts });
         } else {

@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import GraphQLSchema from 'graphql';
 
+import runVisualization from './runVisualization';
 import { ToolbarButton } from './ToolbarButton';
 
 export class SchemaMap extends React.Component {
@@ -37,8 +38,9 @@ export class SchemaMap extends React.Component {
   }
 
   componentDidMount() {
-    console.log('this.props.schema', this.props.schema);
-    addVisualizationToDom(this.network, this.props.schema._typeMap);
+    const { _typeMap: typeMap, _queryType: rootNode } = this.props.schema;
+    runVisualization(this.network);
+    // addVisualizationToDom(this.network, rootNode, typeMap);
   }
 
   componentWillUnmount() {
@@ -46,78 +48,53 @@ export class SchemaMap extends React.Component {
   }
 }
 
-const OPTIONS = {
-  physics: false,
-  interaction: {
-    hover: true,
-    dragNodes: true,
-    zoomView: true,
-    dragView: true,
-  },
-  edges: {
-    smooth: {
-      enabled: true,
-      type: 'curvedCW',
-      forceDirection: 'vertical',
-      roundness: 0.2,
-    },
-    arrows: 'to',
-  },
-};
-
-function addVisualizationToDom(networkDomNode, typeMap) {
-  const { edges, nodes } = _parseNodes(typeMap);
-  const network = new vis.Network(networkDomNode, { edges, nodes }, OPTIONS);
-
-  network.on('hoverNode', ({ node: nodeId }) => {
-    const edgeIds = network.getConnectedEdges(nodeId);
-    const connectedEdges = edges.get(edgeIds);
-    for (let edge of connectedEdges) {
-      // if the edge is an incoming connection from a different node
-      if (edge.from != nodeId && edge.to === nodeId) {
-        continue;
-      }
-
-      edges.update({ id: edge.id, label: edge.hiddenLabel });
-    }
-  });
-
-  network.on('blurNode', () => {
-    edges.forEach(edge => edges.update({ id: edge.id, label: '' }));
-  });
+function addVisualizationToDom(networkDomNode, rootNode, typeMap) {
+  // const { edges, nodes } = calculateHierarchy(rootNode, typeMap);
 }
 
-function _parseNodes(typeMap) {
+function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
+  const nodes = {};
   const edges = [];
-  const nodes = [];
 
-  for (let type in typeMap) {
-    if (type.startsWith('__')) {
-      continue;
+  function _calculateHierarchy(sourceNode, depth = 0) {
+    if (depth > maxDepth) {
+      return;
     }
 
-    const node = typeMap[type];
-    nodes.push({
-      id: node.name,
-      label: node.name,
-      shape: 'box',
-    });
+    // depth is calculated relative to the root node, so before new node and
+    // therefore new depth is used, check to see if it's pre-existing
+    const id = sourceNode.name;
+    nodes[id] = nodes[id] || { data: { depth, id } };
 
-    for (let field in node._fields) {
-      const toNodeName = node._fields[field].type.name;
-      edges.push({
-        from: node.name,
-        to: toNodeName,
-        hiddenLabel: field,
-        label: '',
-        arrows: 'to',
-        font: { align: 'horizontal' },
-      });
+    for (let field in sourceNode._fields) {
+      const targetNodeName = _findName(sourceNode._fields[field].type);
+      const targetNode = typeMap[targetNodeName];
+
+      // only allow edge connections inside the max depth
+      if (depth < maxDepth || nodes[targetNodeName]) {
+        edges.push({
+          data: {
+            label: field,
+            source: sourceNode.name,
+            target: targetNode.name,
+          },
+        });
+
+        _calculateHierarchy(targetNode, depth + 1);
+      }
     }
   }
 
+  _calculateHierarchy(rootNode);
+
   return {
-    nodes: new vis.DataSet(nodes),
-    edges: new vis.DataSet(edges),
+    nodes: Object.values(nodes),
+    edges,
   };
+}
+
+function _findName(node) {
+  // This helps handle the fact that types can be composited from other
+  // "types", e.g., List(NonNull(Int))
+  return node.name ? node.name : _findName(node.ofType);
 }

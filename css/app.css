@@ -1,3 +1,15 @@
+line.node-link, path.node-link {
+  fill: none;
+  stroke: black
+}
+circle.node {
+  fill: white;
+  stroke: black
+}
+circle.node+text {
+  text-anchor: middle;
+}
+
 .graphiql-container,
 .graphiql-container button,
 .graphiql-container input {
