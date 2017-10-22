@@ -62,53 +62,63 @@ function appendCircles(svg, numCircles, minRadius = 40, outerPadding = 40) {
 let svg;
 let edges;
 
-function runVisualization(containerNode) {
+function runVisualization(containerNode, rootNode, _nodes, _edges) {
   const svg = d3
     .select(containerNode)
     .append('svg')
     .attr('width', WIDTH)
     .attr('height', HEIGHT);
 
+  // create the background circles
   const circles = appendCircles(svg, 2);
 
-  // nodes returns a [list] of {id: 1, fixed:true}
-  const nodes = d3.range(1, NUM_NODES).map(i => {
-    const depth = getRandomInt(0, DEPTH);
+  // get the number of nodes per circle to space them out evenly on the circle
+  const numNodesPerCircle = _nodes.reduce((counts, n) => {
+    counts[n.depth] = counts[n.depth] || 0;
+    counts[n.depth] += 1;
+    return counts;
+  }, []);
+
+  const idToIndex = _nodes.reduce((map, n, i) => {
+    map[n.id] = i;
+    return map;
+  }, {});
+
+  // format nodes
+  const nodes = _nodes.map((n, i) => {
+    const node = { depth: n.depth, id: n.id };
+
+    if (n.depth === 0) {
+      return { ...node, x: WIDTH / 2, y: HEIGHT / 2 };
+    }
+
+    // one less circle b/c the center node (0 depth) shouldn't have one
+    const circle = circles[n.depth - 1];
     // NOTE: circleCoord assumes everything is on the same circle so it gives
     // spacing for NUM_NODES instead of the actual number of nodes on circle.
-    const circle = circles[depth];
-    const { x, y } = circleCoord(i, circle, NUM_NODES);
-    return { x, y, depth, id: i };
+    const { x, y } = circleCoord(i, circle, numNodesPerCircle[n.depth]);
+    return { ...node, x, y };
   });
 
-  // add center node
-  nodes.push({
-    id: 0,
-    x: WIDTH / 2,
-    y: HEIGHT / 2,
-    // depth: -1,
-  });
-
-  // links returns a [list] of {source: 0, target: 1} (values refer to indices of nodes)
-  const links = d3
-    .range(NUM_NODES)
-    .map(d => ({
-      source: getRandomInt(0, NUM_NODES),
-      target: getRandomInt(0, NUM_NODES),
-    }));
+  // format edges - convert names to node indexes
+  const edges = _edges.map(e => ({
+    source: idToIndex[e.source],
+    target: idToIndex[e.target],
+  }));
+  console.log('edges', edges);
 
   const force = d3.layout
     .force()
     .nodes(nodes)
-    .links(links)
+    .links(edges)
     .size([WIDTH, HEIGHT]);
 
   force.start();
 
   // setup curved edges
-  const edges = svg
+  const svgEdges = svg
     .selectAll('path.node-link')
-    .data(links)
+    .data(edges)
     .enter()
     .append('path')
     .attr('class', 'node-link')
@@ -133,7 +143,7 @@ function runVisualization(containerNode) {
     .attr('r', 20)
     .attr('class', 'node')
     .on('mouseenter', function(d) {
-      fadeDisconnected(edges, d, 0.1);
+      fadeDisconnected(svgEdges, d, 0.1);
       node
         .transition()
         .duration(50)
@@ -149,7 +159,7 @@ function runVisualization(containerNode) {
         .transition()
         .duration(50)
         .attr('r', 20);
-      fadeDisconnected(edges, d, 1);
+      fadeDisconnected(svgEdges, d, 1);
     });
 
   const labels = gnodes

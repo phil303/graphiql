@@ -39,17 +39,13 @@ export class SchemaMap extends React.Component {
 
   componentDidMount() {
     const { _typeMap: typeMap, _queryType: rootNode } = this.props.schema;
-    runVisualization(this.network);
-    // addVisualizationToDom(this.network, rootNode, typeMap);
+    const { edges, nodes } = calculateHierarchy(rootNode, typeMap);
+    runVisualization(this.network, rootNode, nodes, edges);
   }
 
   componentWillUnmount() {
     this.network.innerHTML = '';
   }
-}
-
-function addVisualizationToDom(networkDomNode, rootNode, typeMap) {
-  // const { edges, nodes } = calculateHierarchy(rootNode, typeMap);
 }
 
 function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
@@ -64,7 +60,7 @@ function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
     // depth is calculated relative to the root node, so before new node and
     // therefore new depth is used, check to see if it's pre-existing
     const id = sourceNode.name;
-    nodes[id] = nodes[id] || { data: { depth, id } };
+    nodes[id] = nodes[id] || { depth, id };
 
     for (let field in sourceNode._fields) {
       const targetNodeName = _findName(sourceNode._fields[field].type);
@@ -73,11 +69,9 @@ function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
       // only allow edge connections inside the max depth
       if (depth < maxDepth || nodes[targetNodeName]) {
         edges.push({
-          data: {
-            label: field,
-            source: sourceNode.name,
-            target: targetNode.name,
-          },
+          label: field,
+          source: sourceNode.name,
+          target: targetNode.name,
         });
 
         _calculateHierarchy(targetNode, depth + 1);
