@@ -1,13 +1,15 @@
 line.node-link, path.node-link {
   fill: none;
-  stroke: black
+  stroke: black;
 }
 circle.node {
   fill: white;
-  stroke: black
+  stroke: black;
+  cursor: pointer;
 }
 circle.node+text {
   text-anchor: middle;
+  pointer-events: none;
 }
 
 .graphiql-container,

@@ -1,7 +1,5 @@
-const NUM_NODES = 20;
 const WIDTH = 600;
 const HEIGHT = 600;
-const DEPTH = 2;
 
 // evenly spaces nodes along arc
 function circleCoord(index, circle, num_nodes) {
@@ -12,15 +10,10 @@ function circleCoord(index, circle, num_nodes) {
 }
 
 // fades out lines that aren't connected to node d
-function fadeDisconnected(edges, d, opacity) {
-  edges.transition().style('stroke-opacity', function(o) {
-    return o.source === d || o.target === d ? 1 : opacity;
-  });
-}
-
-// returns random int between 0 and num
-function getRandomInt(min, max) {
-  return Math.floor(Math.random() * max) + min;
+function highlightEdge(edges, d, opacity) {
+  edges
+    .transition()
+    .style('stroke-opacity', o => (o.source === d ? 1 : opacity));
 }
 
 function buildColors(numColors) {
@@ -56,7 +49,7 @@ function appendCircles(svg, numCircles, minRadius = 40, outerPadding = 40) {
 
     circles.push(circle);
   }
-  return circles;
+  return circles.reverse();
 }
 
 let svg;
@@ -72,40 +65,40 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
   // create the background circles
   const circles = appendCircles(svg, 2);
 
-  // get the number of nodes per circle to space them out evenly on the circle
-  const numNodesPerCircle = _nodes.reduce((counts, n) => {
-    counts[n.depth] = counts[n.depth] || 0;
-    counts[n.depth] += 1;
-    return counts;
+  // break the nodes into their circles
+  const nodesPerCircle = _nodes.reduce((circles, n) => {
+    circles[n.depth] = circles[n.depth] || [];
+    circles[n.depth].push(n);
+    return circles;
   }, []);
 
-  const idToIndex = _nodes.reduce((map, n, i) => {
+  // format the nodes
+  const nodes = nodesPerCircle.reduce((allNodes, circleNodes, depth) => {
+    // special logic for depth 0, which only has one node in it
+    if (depth === 0) {
+      const node = circleNodes[0];
+      allNodes.push({ id: node.id, x: WIDTH / 2, y: HEIGHT / 2 });
+    } else {
+      circleNodes.forEach((n, i) => {
+        // one less circle b/c the center node (0 depth) shouldn't have one
+        const circle = circles[depth - 1];
+        const { x, y } = circleCoord(i, circle, circleNodes.length);
+        allNodes.push({ id: n.id, x, y });
+      });
+    }
+    return allNodes;
+  }, []);
+
+  const idToIndex = nodes.reduce((map, n, i) => {
     map[n.id] = i;
     return map;
   }, {});
-
-  // format nodes
-  const nodes = _nodes.map((n, i) => {
-    const node = { depth: n.depth, id: n.id };
-
-    if (n.depth === 0) {
-      return { ...node, x: WIDTH / 2, y: HEIGHT / 2 };
-    }
-
-    // one less circle b/c the center node (0 depth) shouldn't have one
-    const circle = circles[n.depth - 1];
-    // NOTE: circleCoord assumes everything is on the same circle so it gives
-    // spacing for NUM_NODES instead of the actual number of nodes on circle.
-    const { x, y } = circleCoord(i, circle, numNodesPerCircle[n.depth]);
-    return { ...node, x, y };
-  });
 
   // format edges - convert names to node indexes
   const edges = _edges.map(e => ({
     source: idToIndex[e.source],
     target: idToIndex[e.target],
   }));
-  console.log('edges', edges);
 
   const force = d3.layout
     .force()
@@ -127,7 +120,7 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
       const dy = d.target.y - d.source.y;
       const dr = Math.sqrt(dx * dx + dy * dy);
       return `M ${d
-        .source.x},${d.source.y} A ${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+        .source.x} ${d.source.y} A ${dr} ${dr} 0 0 1 ${d.target.x} ${d.target.y}`;
     });
 
   const gnodes = svg
@@ -143,7 +136,7 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
     .attr('r', 20)
     .attr('class', 'node')
     .on('mouseenter', function(d) {
-      fadeDisconnected(svgEdges, d, 0.1);
+      highlightEdge(svgEdges, d, 0.1);
       node
         .transition()
         .duration(50)
@@ -159,7 +152,7 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
         .transition()
         .duration(50)
         .attr('r', 20);
-      fadeDisconnected(svgEdges, d, 1);
+      highlightEdge(svgEdges, d, 1);
     });
 
   const labels = gnodes
@@ -169,3 +162,26 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
 }
 
 export default runVisualization;
+
+// how to add arrows and labels (assumes small node circles and straight
+// lines)
+// http://bl.ocks.org/fancellu/2c782394602a93921faff74e594d1bb1
+// add arrow definition
+// svg
+//   .append('svg:defs')
+//   .append('svg:marker')
+//   .attr('id', 'arrowhead')
+//   .attr('viewBox', '-0 -5 10 10')
+//   .attr('refX', 20)
+//   .attr('refY', 0)
+//   .attr('orient', 'auto')
+//   .attr('markerWidth', 13)
+//   .attr('markerHeight', 13)
+//   .attr('xoverflow', 'visible')
+//   .append('svg:path')
+//   .attr('d', 'M 0,-5 L 10,0 L 0,5')
+//   .attr('fill', 'black')
+//   .style('stroke','none');
+//
+
+//   add .attr('marker-end', 'url(#arrowhead)') to svgEdges
