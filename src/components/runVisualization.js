@@ -52,10 +52,7 @@ function appendCircles(svg, numCircles, minRadius = 40, outerPadding = 40) {
   return circles.reverse();
 }
 
-let svg;
-let edges;
-
-function runVisualization(containerNode, rootNode, _nodes, _edges) {
+function runVisualization(containerNode, rootNode, typeMap, numCircles = 2) {
   const svg = d3
     .select(containerNode)
     .append('svg')
@@ -63,42 +60,12 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
     .attr('height', HEIGHT);
 
   // create the background circles
-  const circles = appendCircles(svg, 2);
+  const circles = appendCircles(svg, numCircles);
+  update(rootNode, typeMap, svg, circles);
+}
 
-  // break the nodes into their circles
-  const nodesPerCircle = _nodes.reduce((circles, n) => {
-    circles[n.depth] = circles[n.depth] || [];
-    circles[n.depth].push(n);
-    return circles;
-  }, []);
-
-  // format the nodes
-  const nodes = nodesPerCircle.reduce((allNodes, circleNodes, depth) => {
-    // special logic for depth 0, which only has one node in it
-    if (depth === 0) {
-      const node = circleNodes[0];
-      allNodes.push({ id: node.id, x: WIDTH / 2, y: HEIGHT / 2 });
-    } else {
-      circleNodes.forEach((n, i) => {
-        // one less circle b/c the center node (0 depth) shouldn't have one
-        const circle = circles[depth - 1];
-        const { x, y } = circleCoord(i, circle, circleNodes.length);
-        allNodes.push({ id: n.id, x, y });
-      });
-    }
-    return allNodes;
-  }, []);
-
-  const idToIndex = nodes.reduce((map, n, i) => {
-    map[n.id] = i;
-    return map;
-  }, {});
-
-  // format edges - convert names to node indexes
-  const edges = _edges.map(e => ({
-    source: idToIndex[e.source],
-    target: idToIndex[e.target],
-  }));
+function update(rootNode, typeMap, svg, circles) {
+  const { nodes, edges } = formatData(rootNode, typeMap, circles.length);
 
   const force = d3.layout
     .force()
@@ -153,12 +120,106 @@ function runVisualization(containerNode, rootNode, _nodes, _edges) {
         .duration(50)
         .attr('r', 20);
       highlightEdge(svgEdges, d, 1);
+    })
+    .on('click', function(d) {
+      console.log('d', d);
     });
 
   const labels = gnodes
     .append('text')
     .attr('dy', 4)
     .text(d => d.id);
+}
+
+// TODO: combine/simplify formatData and calculateHierarchy
+function formatData(rootNode, typeMap, maxDepth) {
+  const { edges: _edges, nodes: _nodes } = calculateHierarchy(
+    rootNode,
+    typeMap,
+    maxDepth,
+  );
+
+  // divide the nodes into their circles
+  const nodesPerCircle = _nodes.reduce((circles, n) => {
+    circles[n.depth] = circles[n.depth] || [];
+    circles[n.depth].push(n);
+    return circles;
+  }, []);
+
+  // format the nodes
+  const nodes = nodesPerCircle.reduce((allNodes, circleNodes, depth) => {
+    // special logic for depth 0, which only has one node in it
+    if (depth === 0) {
+      const node = circleNodes[0];
+      allNodes.push({ id: node.id, x: WIDTH / 2, y: HEIGHT / 2 });
+    } else {
+      circleNodes.forEach((n, i) => {
+        // one less circle b/c the center node (0 depth) shouldn't have one
+        const circle = circles[depth - 1];
+        const { x, y } = circleCoord(i, circle, circleNodes.length);
+        allNodes.push({ id: n.id, x, y });
+      });
+    }
+    return allNodes;
+  }, []);
+
+  const idToIndex = nodes.reduce((map, n, i) => {
+    map[n.id] = i;
+    return map;
+  }, {});
+
+  // format edges - convert names to node indexes
+  const edges = _edges.map(e => ({
+    source: idToIndex[e.source],
+    target: idToIndex[e.target],
+  }));
+
+  return { nodes, edges };
+}
+
+function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
+  const nodes = {};
+  const edges = [];
+
+  function _calculateHierarchy(sourceNode, depth = 0) {
+    if (depth > maxDepth) {
+      return;
+    }
+
+    // depth is calculated relative to the root node, so before new node and
+    // therefore new depth is used, check to see if it's pre-existing
+    const id = sourceNode.name;
+    nodes[id] = nodes[id] || { depth, id };
+
+    for (let field in sourceNode._fields) {
+      const targetNodeName = _findName(sourceNode._fields[field].type);
+      const targetNode = typeMap[targetNodeName];
+
+      // only allow edge connections inside the max depth
+      if (depth < maxDepth || nodes[targetNodeName]) {
+        edges.push({
+          label: field,
+          source: sourceNode.name,
+          target: targetNode.name,
+        });
+
+        _calculateHierarchy(targetNode, depth + 1);
+      }
+    }
+  }
+
+  _calculateHierarchy(rootNode);
+
+  return {
+    nodes: Object.values(nodes),
+    edges,
+  };
+}
+
+function _findName(node) {
+  // This helps handle the fact that types can be composited from other
+  // "types", e.g., List(NonNull(Int))
+  return node.name ? node.name : _findName(node.ofType);
 }
 
 export default runVisualization;
