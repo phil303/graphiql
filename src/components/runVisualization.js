@@ -2,9 +2,9 @@ const WIDTH = 600;
 const HEIGHT = 600;
 
 // evenly spaces nodes along arc
-function circleCoord(index, circle, num_nodes) {
+function circleCoord(index, circle, numNodes) {
   const circumference = circle.node().getTotalLength();
-  const sectionLength = circumference / num_nodes;
+  const sectionLength = circumference / numNodes;
   const position = sectionLength * index + sectionLength / 2;
   return circle.node().getPointAtLength(circumference - position);
 }
@@ -59,26 +59,25 @@ function runVisualization(containerNode, rootNode, typeMap, numCircles = 2) {
     .attr('width', WIDTH)
     .attr('height', HEIGHT);
 
+  const layout = d3.layout.force().size([WIDTH, HEIGHT]);
+
   // create the background circles
   const circles = appendCircles(svg, numCircles);
-  update(rootNode, typeMap, svg, circles);
+  update(layout, rootNode, typeMap, svg, circles);
 }
 
-function update(rootNode, typeMap, svg, circles) {
-  const { nodes, edges } = formatData(rootNode, typeMap, circles.length);
+function update(layout, rootNode, typeMap, svg, circles) {
+  const { nodes, edges } = formatData(rootNode, typeMap, circles);
 
-  const force = d3.layout
-    .force()
+  layout
     .nodes(nodes)
     .links(edges)
-    .size([WIDTH, HEIGHT]);
-
-  force.start();
+    .start();
 
   // setup curved edges
-  const svgEdges = svg
-    .selectAll('path.node-link')
-    .data(edges)
+  const svgEdges = svg.selectAll('path.node-link').data(edges);
+
+  svgEdges
     .enter()
     .append('path')
     .attr('class', 'node-link')
@@ -90,13 +89,17 @@ function update(rootNode, typeMap, svg, circles) {
         .source.x} ${d.source.y} A ${dr} ${dr} 0 0 1 ${d.target.x} ${d.target.y}`;
     });
 
-  const gnodes = svg
-    .selectAll('g.gnode')
-    .data(nodes)
+  svgEdges.exit().remove();
+
+  const gnodes = svg.selectAll('g.gnode').data(nodes);
+
+  gnodes
     .enter()
     .append('g')
     .attr('transform', d => `translate(${d.x},${d.y})`)
     .classed('gnode', true);
+
+  gnodes.exit().remove();
 
   const node = gnodes
     .append('circle')
@@ -122,98 +125,100 @@ function update(rootNode, typeMap, svg, circles) {
       highlightEdge(svgEdges, d, 1);
     })
     .on('click', function(d) {
-      console.log('d', d);
+      const node = typeMap[d.name];
+      update(layout, node, typeMap, svg, circles);
     });
 
   const labels = gnodes
     .append('text')
     .attr('dy', 4)
-    .text(d => d.id);
+    .text(d => d.name);
 }
 
-// TODO: combine/simplify formatData and calculateHierarchy
-function formatData(rootNode, typeMap, maxDepth) {
-  const { edges: _edges, nodes: _nodes } = calculateHierarchy(
+function formatData(rootNode, typeMap, circles) {
+  const { edges: _edges, nodes: _nodes, nodesPerDepth } = calculateHierarchy(
     rootNode,
     typeMap,
-    maxDepth,
+    circles.length,
   );
 
-  // divide the nodes into their circles
-  const nodesPerCircle = _nodes.reduce((circles, n) => {
-    circles[n.depth] = circles[n.depth] || [];
-    circles[n.depth].push(n);
-    return circles;
+  const numNodesPerDepth = _nodes.reduce((acc, n) => {
+    acc[n.depth] = Number.isInteger(acc[n.depth]) ? acc[n.depth] + 1 : 1;
+    return acc;
   }, []);
 
-  // format the nodes
-  const nodes = nodesPerCircle.reduce((allNodes, circleNodes, depth) => {
-    // special logic for depth 0, which only has one node in it
-    if (depth === 0) {
-      const node = circleNodes[0];
-      allNodes.push({ id: node.id, x: WIDTH / 2, y: HEIGHT / 2 });
+  const counters = [];
+  const nodes = _nodes.map(n => {
+    if (n.depth === 0) {
+      return { name: n.name, x: WIDTH / 2, y: HEIGHT / 2 };
     } else {
-      circleNodes.forEach((n, i) => {
-        // one less circle b/c the center node (0 depth) shouldn't have one
-        const circle = circles[depth - 1];
-        const { x, y } = circleCoord(i, circle, circleNodes.length);
-        allNodes.push({ id: n.id, x, y });
-      });
+      // one less circle b/c the center node (0 depth) shouldn't have one
+      const circle = circles[n.depth - 1];
+      counters[n.depth] = Number.isInteger(counters[n.depth])
+        ? counters[n.depth] + 1
+        : 0;
+      const { x, y } = circleCoord(
+        counters[n.depth],
+        circle,
+        numNodesPerDepth[n.depth],
+      );
+      return { name: n.name, x, y };
     }
-    return allNodes;
-  }, []);
+  });
 
-  const idToIndex = nodes.reduce((map, n, i) => {
-    map[n.id] = i;
+  const nameToIndex = nodes.reduce((map, n, i) => {
+    map[n.name] = i;
     return map;
   }, {});
 
   // format edges - convert names to node indexes
   const edges = _edges.map(e => ({
-    source: idToIndex[e.source],
-    target: idToIndex[e.target],
+    source: nameToIndex[e.source],
+    target: nameToIndex[e.target],
   }));
 
   return { nodes, edges };
 }
 
-function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
-  const nodes = {};
-  const edges = [];
+function calculateHierarchy(rootNode, typeMap, maxDepth=2) {
+  const nameToNode = {};
 
-  function _calculateHierarchy(sourceNode, depth = 0) {
+  function _calculateHierarchy(sourceNode, depth=0) {
     if (depth > maxDepth) {
       return;
     }
 
+    const children = [];
+    for (let field in sourceNode._fields) {
+      const name = _findName(sourceNode._fields[field].type);
+      children.push({ field, name });
+
+      const childNode = typeMap[name];
+      _calculateHierarchy(childNode, depth + 1);
+    }
+
+    const name = sourceNode.name;
     // depth is calculated relative to the root node, so before new node and
     // therefore new depth is used, check to see if it's pre-existing
-    const id = sourceNode.name;
-    nodes[id] = nodes[id] || { depth, id };
-
-    for (let field in sourceNode._fields) {
-      const targetNodeName = _findName(sourceNode._fields[field].type);
-      const targetNode = typeMap[targetNodeName];
-
-      // only allow edge connections inside the max depth
-      if (depth < maxDepth || nodes[targetNodeName]) {
-        edges.push({
-          label: field,
-          source: sourceNode.name,
-          target: targetNode.name,
-        });
-
-        _calculateHierarchy(targetNode, depth + 1);
-      }
-    }
+    nameToNode[name] = nameToNode[name] || { depth, name, children };
   }
 
   _calculateHierarchy(rootNode);
 
-  return {
-    nodes: Object.values(nodes),
-    edges,
-  };
+  const nodes = Object.values(nameToNode);
+  const edges = nodes
+    .reduce((acc, n) => {
+      return acc.concat(n.children.map(child => {
+        // only allow edge connections inside the max depth
+        return nameToNode[child.name]
+          ? { field: child.field, source: n.name, target: child.name }
+          : null;
+      }),
+      );
+    }, [])
+    .filter(e => e);
+
+  return { nodes, edges };
 }
 
 function _findName(node) {
