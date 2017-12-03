@@ -66,6 +66,10 @@ function runVisualization(containerNode, rootNode, typeMap, numCircles = 2) {
   update(layout, rootNode, typeMap, svg, circles);
 }
 
+function nodeKey(n) {
+  return `${n.name}-${n.depth}-${n.x}-${n.y}`;
+}
+
 function update(layout, rootNode, typeMap, svg, circles) {
   const { nodes, edges } = formatData(rootNode, typeMap, circles);
 
@@ -75,7 +79,9 @@ function update(layout, rootNode, typeMap, svg, circles) {
     .start();
 
   // setup curved edges
-  const svgEdges = svg.selectAll('path.node-link').data(edges);
+  const svgEdges = svg
+    .selectAll('path.node-link')
+    .data(edges, e => `${e.field}-${nodeKey(e.source)}-${nodeKey(e.target)}`);
 
   svgEdges
     .enter()
@@ -91,12 +97,15 @@ function update(layout, rootNode, typeMap, svg, circles) {
 
   svgEdges.exit().remove();
 
-  const gnodes = svg.selectAll('g.gnode').data(nodes);
+  const gnodes = svg.selectAll('g.gnode').data(nodes, nodeKey);
 
   gnodes
     .enter()
     .append('g')
-    .attr('transform', d => `translate(${d.x},${d.y})`)
+    .attr('transform', d => {
+      console.log('d', d);
+      return `translate(${d.x},${d.y})`;
+    })
     .classed('gnode', true);
 
   gnodes.exit().remove();
@@ -150,7 +159,7 @@ function formatData(rootNode, typeMap, circles) {
   const counters = [];
   const nodes = _nodes.map(n => {
     if (n.depth === 0) {
-      return { name: n.name, x: WIDTH / 2, y: HEIGHT / 2 };
+      return { name: n.name, x: WIDTH / 2, y: HEIGHT / 2, depth: 0 };
     } else {
       // one less circle b/c the center node (0 depth) shouldn't have one
       const circle = circles[n.depth - 1];
@@ -162,7 +171,7 @@ function formatData(rootNode, typeMap, circles) {
         circle,
         numNodesPerDepth[n.depth],
       );
-      return { name: n.name, x, y };
+      return { name: n.name, depth: n.depth, x, y };
     }
   });
 
@@ -180,10 +189,10 @@ function formatData(rootNode, typeMap, circles) {
   return { nodes, edges };
 }
 
-function calculateHierarchy(rootNode, typeMap, maxDepth=2) {
+function calculateHierarchy(rootNode, typeMap, maxDepth = 2) {
   const nameToNode = {};
 
-  function _calculateHierarchy(sourceNode, depth=0) {
+  function _calculateHierarchy(sourceNode, depth = 0) {
     if (depth > maxDepth) {
       return;
     }
@@ -208,12 +217,13 @@ function calculateHierarchy(rootNode, typeMap, maxDepth=2) {
   const nodes = Object.values(nameToNode);
   const edges = nodes
     .reduce((acc, n) => {
-      return acc.concat(n.children.map(child => {
-        // only allow edge connections inside the max depth
-        return nameToNode[child.name]
-          ? { field: child.field, source: n.name, target: child.name }
-          : null;
-      }),
+      return acc.concat(
+        n.children.map(child => {
+          // only allow edge connections inside the max depth
+          return nameToNode[child.name]
+            ? { field: child.field, source: n.name, target: child.name }
+            : null;
+        }),
       );
     }, [])
     .filter(e => e);
