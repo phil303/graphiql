@@ -78,11 +78,8 @@ export class GraphiQL extends React.Component {
     this._storage = new StorageAPI(props.storage);
 
     // Determine the initial query to display.
-    const query = props.query !== undefined
-      ? props.query
-      : this._storage.get('query') !== null
-        ? this._storage.get('query')
-        : props.defaultQuery !== undefined ? props.defaultQuery : defaultQuery;
+    const fallbackQuery = props.defaultQuery || defaultQuery;
+    const query = props.query || this._storage.get('query') || fallbackQuery;
 
     // Get the initial query facts.
     const queryFacts = getQueryFacts(props.schema, query);
@@ -105,6 +102,7 @@ export class GraphiQL extends React.Component {
     this.state = {
       schema: props.schema,
       query,
+      hasPrefilledQuery: !!props.query,
       variables,
       operationName,
       response: props.response,
@@ -138,6 +136,10 @@ export class GraphiQL extends React.Component {
     // provided, including if `null` was provided.
     if (this.state.schema === undefined) {
       this._fetchSchema();
+    }
+
+    if (this.state.hasPrefilledQuery) {
+      this.handleRunQuery(this.state.operationName);
     }
 
     // Utility for keeping CodeMirror correctly sized.
