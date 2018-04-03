@@ -90,7 +90,7 @@ export class GraphiQL extends React.Component {
       : this._storage.get('variables');
 
     // Determine the initial operationName to use.
-    const operationName = props.operationName !== undefined
+    const operationName = props.operationName != undefined
       ? props.operationName
       : getSelectedOperationName(
           null,
@@ -617,6 +617,15 @@ export class GraphiQL extends React.Component {
     if (selectedOperationName && selectedOperationName !== operationName) {
       operationName = selectedOperationName;
       this.handleEditOperationName(operationName);
+    }
+
+    // only automatically run queries (no mutations or subscriptions)
+    const containsNonQueries =
+      this.state.operations &&
+      this.state.operations.filter(o => o.operation !== 'query').length;
+
+    if (containsNonQueries) {
+      return;
     }
 
     try {
