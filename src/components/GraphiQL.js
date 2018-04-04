@@ -98,11 +98,16 @@ export class GraphiQL extends React.Component {
           queryFacts && queryFacts.operations,
         );
 
+    // only automatically run queries (no mutations or subscriptions)
+    const containsNonQueries =
+      queryFacts &&
+      queryFacts.operations.filter(o => o.operation !== 'query').length;
+
     // Initialize state
     this.state = {
       schema: props.schema,
       query,
-      hasPrefilledQuery: !!props.query,
+      runPrefilledQuery: props.query && !containsNonQueries,
       variables,
       operationName,
       response: props.response,
@@ -138,7 +143,7 @@ export class GraphiQL extends React.Component {
       this._fetchSchema();
     }
 
-    if (this.state.hasPrefilledQuery) {
+    if (this.state.runPrefilledQuery) {
       this.handleRunQuery(this.state.operationName);
     }
 
@@ -617,15 +622,6 @@ export class GraphiQL extends React.Component {
     if (selectedOperationName && selectedOperationName !== operationName) {
       operationName = selectedOperationName;
       this.handleEditOperationName(operationName);
-    }
-
-    // only automatically run queries (no mutations or subscriptions)
-    const containsNonQueries =
-      this.state.operations &&
-      this.state.operations.filter(o => o.operation !== 'query').length;
-
-    if (containsNonQueries) {
-      return;
     }
 
     try {
